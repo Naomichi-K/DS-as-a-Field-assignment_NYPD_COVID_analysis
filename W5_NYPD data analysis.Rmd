@@ -1,0 +1,106 @@
+---
+title: "W5_NYPD analysis"
+author: "(Assignment)"
+date: "2023/11/11"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 0) load the library
+
+```{r library, warning=FALSE}
+library(tidyverse)
+library(ggplot2)
+```
+
+## 1) Read the CSV file (NYDP Shooting Incident) 
+
+```{r read_csv_file, include=TRUE}
+NYPD <- read.csv("https://data.cityofnewyork.us/api/views/5ucz-vwe8/rows.csv?accessType=DOWNLOAD")
+```
+
+## 2) Overview the data
+
+```{r summary_of_NYPD}
+summary(NYPD)
+head(NYPD)
+str(NYPD)
+
+na_columns <- NYPD %>% 
+  select_if(function(x) any(is.na(x))) %>% 
+  names()
+na_columns # identify which columns contains NA values
+```
+Some rows lack spacial data, but this time we are to focus on "age" and "sex" of the victim. So there seems to be no such a big problem even if we the whole data.
+
+We have no specific theory to test at the present...
+Let's just explore **"VIC_AGE_GROUP"**, *and* **"VIC_SEX"**!
+
+## 3-A) Plot; univariate
+
+```{r barplot age dist, echo=TRUE}
+NYPD.2v = NYPD[,c("VIC_AGE_GROUP","VIC_SEX")]
+NYPD.2v[] <- lapply(NYPD.2v, factor)
+str(NYPD.2v)
+
+table(NYPD.2v$VIC_AGE_GROUP)
+barplot(table(NYPD.2v$VIC_AGE_GROUP))
+```
+Note that the ranges of each age group are not consistent, which may lead to issues when interpreting the results.
+
+```{r barplot sex ratio, echo=TRUE}
+table(NYPD.2v$VIC_SEX)
+barplot(table(NYPD.2v$VIC_SEX))
+```
+The gender proportion among the victims is extremely unbalanced. While this is a fact in itself, it may introduce some sort of bias during interpretation.
+
+## 3-B) Plot; bivariate
+```{r tabulate}
+#tabulate
+NYPD.2v <- as.data.frame(NYPD.2v)
+
+# Create a cross table
+NYPD.cross_table <- table(NYPD.2v$VIC_AGE_GROUP,NYPD.2v$VIC_SEX)
+
+# Print the cross table
+print(NYPD.cross_table)
+
+barplot(NYPD.cross_table, beside=TRUE, legend = rownames(NYPD.cross_table), cex.axis = 0.5)
+```
+The difference in distribution doesn't seem apparent.
+Let's try using regression analysis to get a formal support!
+
+## 4-A) Formal test
+```{r Chi-squared Goodness of Fit test}
+age_female <- NYPD.cross_table[1:5,1]#exclude the unknown data
+age_male   <- NYPD.cross_table[1:5,2]
+chisq.test(age_female, age_male)
+```
+
+## 4-B) Binomial Regression Modeling: Sex~age
+
+```{r discriminative_model_M/F}
+# convert factor variable into numeric (M=1, F=0)
+NYPD.2v <- NYPD.2v %>% mutate(SEX_num = case_when(
+  VIC_SEX == "M" ~ 1,
+  VIC_SEX == "F" ~ 0))
+# View the data frame to confirm changes
+#head(NYPD.2v)
+
+# simple linear modeling
+mod <- glm(formula = SEX_num~VIC_AGE_GROUP, data=NYPD.2v,
+            family = binomial)
+summary(mod)
+```
+All age factors are statistically **insignificant** in predicting the sex of victims, according to the dataset.
+So, we cannot predict the victim's sex from their age information.
+
+# Discussion on Bias
+- This data is from New York. However, in certain regions, age information might be meaningful for making such predictions.
+
+- The data focuses solely on individuals who have either committed crimes or become victims. Ignoring the information about people who are not included in the data could lead to misunderstandings.
